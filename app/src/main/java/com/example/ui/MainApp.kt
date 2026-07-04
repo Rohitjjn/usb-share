@@ -223,6 +223,8 @@ fun DashboardScreen(viewModel: MainViewModel) {
     val serverPort by viewModel.serverPort.collectAsState()
     val localServerPassword by viewModel.localServerPassword.collectAsState()
     
+    var showWebdavInstructions by remember { mutableStateOf(false) }
+    
     val networkInterfaces by viewModel.networkInterfaces.collectAsState()
     val detectedUsbIp by viewModel.detectedUsbIp.collectAsState()
 
@@ -454,6 +456,37 @@ fun DashboardScreen(viewModel: MainViewModel) {
                                 }
                             }
                         }
+
+                        Spacer(modifier = Modifier.height(16.dp))
+
+                        Button(
+                            onClick = {
+                                showWebdavInstructions = true
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(44.dp)
+                                .testTag("how_to_mount_windows_btn"),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.Black.copy(alpha = 0.05f),
+                                contentColor = Color.Black
+                            ),
+                            border = BorderStroke(1.dp, SurfaceBorder),
+                            shape = RoundedCornerShape(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.HelpOutline,
+                                contentDescription = null,
+                                modifier = Modifier.size(18.dp),
+                                tint = Color.Black
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text(
+                                text = "How to mount on Windows",
+                                fontWeight = FontWeight.Bold,
+                                style = MaterialTheme.typography.labelLarge
+                            )
+                        }
                     }
                 }
             }
@@ -541,6 +574,10 @@ fun DashboardScreen(viewModel: MainViewModel) {
                 }
             }
         }
+    }
+
+    if (showWebdavInstructions) {
+        WebdavSetupInstructions(onDismiss = { showWebdavInstructions = false })
     }
 }
 
@@ -1748,4 +1785,204 @@ fun copyToClipboard(context: Context, text: String) {
     val clip = android.content.ClipData.newPlainText("Copied Text", text)
     clipboard.setPrimaryClip(clip)
     Toast.makeText(context, "Copied to clipboard", Toast.LENGTH_SHORT).show()
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun WebdavSetupInstructions(onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val prefs = remember { context.getSharedPreferences("usb_direct_share_prefs", Context.MODE_PRIVATE) }
+    var showRegistryWarning by remember {
+        mutableStateOf(!prefs.getBoolean("has_dismissed_registry_warning", false))
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Computer,
+                    contentDescription = null,
+                    tint = AccentCyan,
+                    modifier = Modifier.size(28.dp)
+                )
+                Spacer(modifier = Modifier.width(10.dp))
+                Text(
+                    text = "Windows Mount Setup",
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Black,
+                        color = PrimaryText
+                    )
+                )
+            }
+        },
+        text = {
+            LazyColumn(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 1. Conditionally show the prominent dismissible registry warning first
+                if (showRegistryWarning) {
+                    item {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .border(BorderStroke(1.dp, StatusRed.copy(alpha = 0.3f)), RoundedCornerShape(12.dp)),
+                            colors = CardDefaults.cardColors(containerColor = StatusRed.copy(alpha = 0.05f)),
+                            shape = RoundedCornerShape(12.dp)
+                        ) {
+                            Column(modifier = Modifier.padding(14.dp)) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Row(verticalAlignment = Alignment.CenterVertically) {
+                                        Icon(
+                                            imageVector = Icons.Default.Warning,
+                                            contentDescription = "Warning",
+                                            tint = StatusRed,
+                                            modifier = Modifier.size(20.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(6.dp))
+                                        Text(
+                                            text = "Windows Basic Auth Bug",
+                                            fontWeight = FontWeight.Bold,
+                                            style = MaterialTheme.typography.labelLarge,
+                                            color = StatusRed
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = {
+                                            prefs.edit().putBoolean("has_dismissed_registry_warning", true).apply()
+                                            showRegistryWarning = false
+                                        },
+                                        modifier = Modifier.size(24.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "Dismiss",
+                                            tint = MutedText,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(8.dp))
+                                
+                                Text(
+                                    text = "Windows blocks Map Network Drive over HTTP by default. To fix this, you must change a registry key on your PC.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = PrimaryText,
+                                    lineHeight = 16.sp
+                                )
+                                
+                                Spacer(modifier = Modifier.height(10.dp))
+                                
+                                Text(
+                                    text = "Option A: PowerShell (Fastest & Easiest)",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PrimaryText
+                                )
+                                
+                                Text(
+                                    text = "Open PowerShell as Administrator and run:",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MutedText
+                                )
+                                
+                                val psCommand = "Set-ItemProperty -Path \"HKLM:\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters\" -Name \"BasicAuthLevel\" -Value 2\nRestart-Service WebClient"
+                                
+                                Spacer(modifier = Modifier.height(6.dp))
+                                
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(Color.White, RoundedCornerShape(6.dp))
+                                        .border(1.dp, SurfaceBorder, RoundedCornerShape(6.dp))
+                                        .padding(8.dp)
+                                ) {
+                                    Column {
+                                        Text(
+                                            text = psCommand,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 11.sp,
+                                            color = PrimaryText,
+                                            lineHeight = 14.sp
+                                        )
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Button(
+                                            onClick = { copyToClipboard(context, psCommand) },
+                                            modifier = Modifier.height(32.dp),
+                                            colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
+                                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 0.dp),
+                                            shape = RoundedCornerShape(6.dp)
+                                        ) {
+                                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(12.dp))
+                                            Spacer(modifier = Modifier.width(4.dp))
+                                            Text("Copy Commands", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                                
+                                Spacer(modifier = Modifier.height(12.dp))
+                                
+                                Text(
+                                    text = "Option B: Manual Registry Edit",
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = PrimaryText
+                                )
+                                Text(
+                                    text = "1. Open Registry Editor (regedit).\n" +
+                                            "2. Go to: HKEY_LOCAL_MACHINE\\SYSTEM\\CurrentControlSet\\Services\\WebClient\\Parameters\n" +
+                                            "3. Find or create \"BasicAuthLevel\" (DWORD).\n" +
+                                            "4. Change its value to 2.\n" +
+                                            "5. Open Services, find \"WebClient\", and restart it.",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = PrimaryText,
+                                    lineHeight = 16.sp
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // 2. Regular WebDAV Mount instructions
+                item {
+                    Text(
+                        text = "Step-by-step Map Network Drive:",
+                        fontWeight = FontWeight.Bold,
+                        style = MaterialTheme.typography.labelLarge,
+                        color = PrimaryText
+                    )
+                }
+
+                item {
+                    Text(
+                        text = "1. Open File Explorer on your Windows PC.\n" +
+                                "2. Right-click 'This PC' in the sidebar or menu and select 'Map network drive...'\n" +
+                                "3. Choose a drive letter (e.g., Z:).\n" +
+                                "4. Paste the Connection Link (e.g. http://192.168.42.129:8080) into the 'Folder' box.\n" +
+                                "5. Check 'Connect using different credentials' and click Finish.\n" +
+                                "6. Enter the Username (admin) and the Security Password shown on your phone's screen.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedText,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onDismiss,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.Black, contentColor = Color.White),
+                shape = RoundedCornerShape(8.dp)
+            ) {
+                Text("Got It")
+            }
+        },
+        containerColor = SurfaceCard
+    )
 }

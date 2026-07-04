@@ -199,6 +199,14 @@ class WebdavServer(
                 rawMethod == "MOVE" -> {
                     handleMove(socket, requestPath, headers)
                 }
+                // WebDAV LOCK
+                rawMethod == "LOCK" -> {
+                    handleLock(socket, requestPath, headers)
+                }
+                // WebDAV UNLOCK
+                rawMethod == "UNLOCK" -> {
+                    handleUnlock(socket)
+                }
 
                 else -> {
                     sendError(socket, 405, "Method Not Allowed")
@@ -277,7 +285,8 @@ class WebdavServer(
         return try {
             val decoded = URLDecoder.decode(relativePath, "UTF-8")
             val resolved = File(rootDir, decoded).canonicalFile
-            if (resolved.absolutePath.startsWith(rootDir.canonicalPath)) {
+            val rootCanonical = rootDir.canonicalFile
+            if (resolved == rootCanonical || resolved.absolutePath.startsWith(rootCanonical.absolutePath + File.separator)) {
                 resolved
             } else {
                 null
@@ -290,10 +299,54 @@ class WebdavServer(
     private fun sendOptionsResponse(socket: Socket) {
         val headers = mapOf(
             "DAV" to "1, 2",
-            "Allow" to "OPTIONS, GET, HEAD, PUT, POST, DELETE, PROPFIND, MKCOL, MOVE",
+            "Allow" to "OPTIONS, GET, HEAD, PUT, POST, DELETE, PROPFIND, MKCOL, MOVE, LOCK, UNLOCK",
             "Content-Length" to "0"
         )
         sendResponseHeaders(socket, 200, "OK", headers)
+    }
+
+    private fun handleLock(socket: Socket, path: String, headers: Map<String, String>) {
+        val uuid = java.util.UUID.randomUUID().toString()
+        val token = "urn:uuid:$uuid"
+        
+        val sb = StringBuilder()
+        sb.append("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n")
+        sb.append("<D:prop xmlns:D=\"DAV:\">\n")
+        sb.append("  <D:lockdiscovery>\n")
+        sb.append("    <D:activelock>\n")
+        sb.append("      <D:locktype><D:write/></D:locktype>\n")
+        sb.append("      <D:lockscope><D:exclusive/></D:lockscope>\n")
+        sb.append("      <D:depth>Infinity</D:depth>\n")
+        sb.append("      <D:owner>\n")
+        sb.append("        <D:href>admin</D:href>\n")
+        sb.append("      </D:owner>\n")
+        sb.append("      <D:timeout>Second-604800</D:timeout>\n")
+        sb.append("      <D:locktoken>\n")
+        sb.append("        <D:href>$token</D:href>\n")
+        sb.append("      </D:locktoken>\n")
+        sb.append("      <D:lockroot>\n")
+        sb.append("        <D:href>${escapeXml(path)}</D:href>\n")
+        sb.append("      </D:lockroot>\n")
+        sb.append("    </D:activelock>\n")
+        sb.append("  </D:lockdiscovery>\n")
+        sb.append("</D:prop>\n")
+        
+        val bodyBytes = sb.toString().toByteArray(Charsets.UTF_8)
+        val responseHeaders = mapOf(
+            "Content-Type" to "application/xml; charset=utf-8",
+            "Content-Length" to bodyBytes.size.toString(),
+            "Lock-Token" to "<$token>",
+            "Connection" to "close"
+        )
+        sendResponseHeaders(socket, 200, "OK", responseHeaders)
+        try {
+            socket.getOutputStream().write(bodyBytes)
+            socket.getOutputStream().flush()
+        } catch (e: Exception) {}
+    }
+
+    private fun handleUnlock(socket: Socket) {
+        sendResponse(socket, 204, "No Content", "text/plain", ByteArray(0))
     }
 
     private fun handlePropfind(socket: Socket, path: String, headers: Map<String, String>) {
