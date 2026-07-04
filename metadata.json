@@ -1,0 +1,6 @@
+{
+  "name": "USB Direct Share",
+  "description": "Secure offline file-sharing bridge with a Windows PC via USB tethering using WebDAV and a secure companion client.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
